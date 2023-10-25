@@ -1,130 +1,104 @@
+import time
+import random
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver import ActionChains, Keys
-from selenium.common.exceptions import ElementClickInterceptedException
-from typing import Dict, List, Callable
+from selenium.webdriver.support import expected_conditions as EC
+from typing import List
 
-close_popups_locator = "button[class*='LoginPop']"
-def avoid_popups(func: Callable):
-    def inner(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except ElementClickInterceptedException:
-            driver = args[0].driver
-            driver.find_element(By.CSS_SELECTOR, close_popups_locator).click()
-            print("The popups closed")
-            return func(*args, **kwargs)
+class SeleniumOC():
+    # Unified use of CSS SELECTOR for locators
 
-    return inner
-
-class SeleniumOC:
     def __init__(self, driver):
         self.driver = driver
-        self.split_symbol = "@"
 
-    def _click_and_confirm(self, button_locator: str, target_locator: str):
-        def _click(driver):
-            driver.find_element(By.CSS_SELECTOR, button_locator).click()
-            return self.driver.find_element(By.CSS_SELECTOR, target_locator)
+    def _get_element_by_text(self, css_selector: str, by_text: str):
+        elements = self.driver.find_elements(By.CSS_SELECTOR, css_selector)
+        text_list = [e.text if e else '' for e in elements]
 
-        return _click
-
-    def _get_element(self, locator: str):
-        def _get(driver):
-            return driver.find_element(By.CSS_SELECTOR, locator)
-
-        return _get
-
-    def _scroll_to_element(self, element: WebElement):
-        element_location = element.location['y'] - 130
-        element_location = 0 if element_location < 0 else element_location
-        self.driver.execute_script(f"window.scrollTo(0, {str(element_location)})")
-
-    def _status_hack(
-        self, eol: str | WebElement | List[WebElement], index: int = None
-    ) -> WebElement | List[WebElement]:
-        if isinstance(eol, str):
-            self.must_get_element(eol)
-            elements = self.driver.find_elements(By.CSS_SELECTOR, eol)
-            if index != None:
-                element = elements[index]
-                self._scroll_to_element(element)
-                return element
-            return elements
-        elif isinstance(eol, WebElement):
-            self._scroll_to_element(eol)
-            return eol
-        elif isinstance(eol, list):
-            return eol
-        else:
-            raise Exception("[Err]: missing valid locator or elements")
+        for i, _text in enumerate(text_list):
+            if _text == by_text:
+                return elements[i]
+        return None
+    
+    def _scroll_and_input(self, css_selector: str, send_keys: str):
+        element = self.get_elements(css_selector)
+        self.scroll_to_element(element)
+        element.send_keys(send_keys)
 
     def open(self, url: str):
         self.driver.get(url)
 
-    def must_get_element(self, locator: str, time_out: int = TimeOut.normal) -> WebElement:
+    def close(self):
+        self.driver.quit()
+
+    def hard_delay(self, sleep_time: int = 0):
+        if sleep_time:
+            time.sleep(sleep_time)
+            return
+        time.sleep(random.randint(2, 5))
+
+    def scroll_to_element(self, element: WebElement):
+        location_y = element.location['y'] - 130
+        location_y = 0 if location_y < 0 else location_y
+        self.driver.execute_script(f"window.scrollTo(0, {str(location_y)})")
+
+    def get_elements(self, css_selector: str, multiple: bool = False, by_text: str = ""):
+        if multiple:
+            return self.driver.find_elements(By.CSS_SELECTOR, css_selector)
+        if by_text:
+            return self._get_element_by_text(css_selector, by_text)
+        return self.driver.find_element(By.CSS_SELECTOR, css_selector)
+    
+    def must_get_element(self, css_selector: str, time_out: int = 30):
+        # Wait for an element (default wait time is 30s) if the timeout is exceeded, the program terminates.
+
         return WebDriverWait(self.driver, timeout=time_out).until(
-            self._get_element(locator), message=f"[Err]: expected element not found: {locator}"
+            EC.presence_of_element_located((By.CSS_SELECTOR, css_selector)),
+            message=f"[E] expected element not found: {css_selector}"
         )
-
-    def must_after_cilck(self, button_locator: str, target_locator: str, time_out: int = TimeOut.normal) -> WebElement:
-        return WebDriverWait(self.driver, time_out).until(
-            self._click_and_confirm(button_locator, target_locator),
-            message=f"[Err]: the button or expected element is not found: {target_locator}",
+    
+    def must_get_text(self, css_selector: str, text: str, time_out: int = 30):
+        # Wait for the  text of the element (default wait time is 30 seconds), if the timeout is exceeded, the program will terminate.
+            
+        return WebDriverWait(self.driver, timeout=time_out).until(
+            EC.text_to_be_present_in_element((By.CSS_SELECTOR, css_selector), text),
+            message=f"[E] expected text not found: {text}"
         )
+    
+    def must_no_element(self, css_selector: str, time_out: int = 30):
+        return WebDriverWait(self.driver, timeout=time_out).until(
+            EC.invisibility_of_element_located((By.CSS_SELECTOR, css_selector)),
+            message=f"[E] expected elements remain: {css_selector}"
+        )
+    
+    def get_text(self, css_selector: str|List[str], multiple: bool = False):
+        if isinstance(css_selector, str):
+            return self.get_elements(css_selector).text
+        if isinstance(css_selector, list):
+            result = []
+            for i in css_selector:
+                _text = self.get_elements(i).text
+                result.append(_text) if _text else result.append("")
+            return result
+    
+    def scroll_and_click(self, css_selector: str, by_text: str = ""):
+        element = self.get_elements(css_selector, by_text=by_text)
+        if not element:
+            print(f"[W] element is not localized, check the: {css_selector}")
+            print(f"[W] by_text: {by_text}")
+            return False
 
-    @avoid_popups
-    def scroll_and_click(self, eol: str | WebElement) -> None:
-        element = self._status_hack(eol, 0)
+        self.scroll_to_element(element)
         element.click()
+        return True
 
-    def get_element_by_text(self, locator: str, text: str) -> WebElement:
-        elements = self._status_hack(locator)
-        attrs = self.get_attributes("text", elements)
-
-        for i, attr in enumerate(attrs):
-            if attr == text:
-                return elements[i]
-
-    def get_element_by_childtext(
-        self, locator: str, child_locator: str, text: str, complete: bool = True
-    ) -> WebElement | None:
-        roots = self._status_hack(locator)
-        for root in roots:
-            _text = root.find_element(By.CSS_SELECTOR, child_locator).text
-            if compile and _text == text:
-                return root
-            if not compile and text in _text:
-                return root
-        return None
-
-    def get_attributes(self, attr: str, eol: str | List[WebElement]) -> List[str]:
-        elements = self._status_hack(eol)
-        attr_list = [e.text for e in elements] if attr == "text" else [e.get_attribute(attr) for e in elements]
-
-        return attr_list
-
-    def select_dropdown(self, box_locator: str, menu_locator: str, item: str) -> None:
-        drop_items_locator = "a"
-
-        self.scroll_and_click(box_locator)
-        self.must_get_element(menu_locator)
-        self.scroll_and_click(self.get_element_by_text(locator=f"{menu_locator} {drop_items_locator}", text=item))
-
-    def action_flow(self, actions: Dict[str, str]):
-        for do in actions:
-            action = do.split("_")[-1]
-            if action == "input":
-                locator, text = actions[do].split(self.split_symbol)
-                element = self.must_get_element(locator)
-                element.send_keys(text)
-            elif action == "click":
-                self.scroll_and_click(actions[do])
-            elif action == "dropdown":
-                box, menu, item = actions[do].split(self.split_symbol)
-                self.select_dropdown(box, menu, item)
-
-    def keyboard_enter(self, actions: Dict[str, str]) -> None:
-        self.action_flow(actions=actions)
-        ActionChains(self.driver).key_down(Keys.ENTER).perform()
+    def scroll_and_input(self, css_selector: str|List[str], send_keys: str|List[str]):
+        if isinstance(css_selector, str) and isinstance(send_keys, str):
+            self._scroll_and_input(css_selector, send_keys)
+            return True
+        if isinstance(css_selector, list) and isinstance(send_keys, list):
+            for i in range(len(css_selector)):
+                self._scroll_and_input(css_selector[i], send_keys[i])
+            return True
+        return False
