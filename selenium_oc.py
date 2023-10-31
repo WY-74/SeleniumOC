@@ -38,6 +38,9 @@ class SeleniumOC():
             return
         time.sleep(random.randint(2, 5))
 
+    def get_url(self):
+        return self.driver.current_url
+
     def scroll_to_element(self, element: WebElement):
         location_y = element.location['y'] - 130
         location_y = 0 if location_y < 0 else location_y
@@ -102,3 +105,20 @@ class SeleniumOC():
                 self._scroll_and_input(css_selector[i], send_keys[i])
             return True
         return False
+    
+    def switch_window_and_execute(self, handle_index, fun, back: bool = True, **kwargs):
+        # 1. Switch windows
+        # 2. Execute function
+        # 3. Return to the first window
+
+        handles = self.driver.window_handles
+        self.driver.switch_to.window(handles[handle_index])
+        fun(**kwargs)
+        if back:
+            self.driver.switch_to.window(handles[handle_index])
+
+    def save_html_to_local(self, pth: str):
+        _html = self.driver.page_source
+        with open(pth, "w", encoding="utf-8") as f:
+            f.write(_html)
+
